@@ -1,62 +1,177 @@
 # Hospital Booking (DRF) — Exam Project
 
 ## Features
-- Custom User (email login) with required fields + validations
-- Email verification (6-digit code, 20 min expiry, 60s resend cooldown)
-- JWT auth (SimpleJWT) — login blocked until email is verified
-- Recovery question (hashed answer) + password reset link via email
-- Doctors (data-only) + Availability Slots (60 min)
-- Appointments: book/cancel/reschedule (>=2 hours rule), 1 patient per slot
+- Custom User (email login)
+- Email verification (6-digit code, expiry + resend cooldown)
+- JWT authentication (SimpleJWT)
+- Login blocked until email is verified AND user is active
+- User self-deactivation (soft delete)
+- User restore via email verification code
+- Recovery question + password reset via email
+- Doctors + availability slots
+- Appointments (book / cancel / reschedule with ≥2h rule)
 - Dockerized (Django + PostgreSQL)
-- Seed demo data command
+- Demo seed command
 
-## Quick start (Docker)
-1. Copy `.env.example` to `.env` and fill values.
-2. Run:
-   ```bash
-   docker compose up --build
-   ```
-3. Apply migrations + create admin:
-   ```bash
-   docker compose exec web python manage.py migrate
-   docker compose exec web python manage.py createsuperuser
-   docker compose exec web python manage.py seed_demo
-   ```
+---
 
-API is served at: `http://localhost:8000/`
+## API Base URL
+http://localhost:8000/api/
 
-## Local run (without Docker)
-```bash
+---
+
+## AUTH FLOW (TESTED)
+
+### Register
+POST /api/auth/register/
+
+{
+  "email": "test@mail.com",
+  "password": "Test123!",
+  "first_name": "Beka",
+  "last_name": "Koridze"
+}
+
+---
+
+### Verify Email
+POST /api/auth/verify-email/
+
+{
+  "email": "test@mail.com",
+  "code": "123456"
+}
+
+---
+
+### Login (JWT)
+POST /api/auth/login/
+
+{
+  "email": "test@mail.com",
+  "password": "Test123!"
+}
+
+Response:
+{
+  "access": "...",
+  "refresh": "..."
+}
+
+Login is blocked if:
+- email is not verified
+- user is deactivated
+
+---
+
+## USER SELF DELETE (SOFT DELETE)
+
+### Deactivate own account
+POST /api/auth/me/delete/
+
+Headers:
+Authorization: Bearer <ACCESS_TOKEN>
+
+Response:
+{
+  "message": "User deactivated"
+}
+
+After deactivation:
+- Login ❌
+- Restore ✅
+
+---
+
+## USER RESTORE (TESTED)
+
+### Request restore code
+POST /api/auth/restore/request/
+
+{
+  "email": "test@mail.com"
+}
+
+Restore code is sent to email.
+
+---
+
+### Confirm restore
+POST /api/auth/restore/confirm/
+
+{
+  "email": "test@mail.com",
+  "code": "654321"
+}
+
+Response:
+{
+  "message": "User restored"
+}
+
+---
+
+### Login again
+POST /api/auth/login/
+
+Login works again after restore.
+
+---
+
+## PASSWORD RECOVERY
+
+### Verify recovery question
+POST /api/auth/recovery/verify/
+
+### Password reset request
+POST /api/auth/password-reset/request/
+
+### Password reset confirm
+POST /api/auth/password-reset/confirm/
+
+---
+
+## DOCTORS & SLOTS
+
+GET /api/doctors/
+GET /api/doctors/{id}/slots/
+
+---
+
+## APPOINTMENTS
+
+POST /api/appointments/
+GET  /api/appointments/my/
+POST /api/appointments/{id}/cancel/
+POST /api/appointments/{id}/reschedule/
+
+Rules:
+- One appointment per slot
+- Reschedule allowed only 2+ hours before appointment
+
+---
+
+## LOCAL RUN
+
 python -m venv .venv
-source .venv/bin/activate  # (Windows: .venv\Scripts\activate)
+source .venv/bin/activate
 pip install -r requirements.txt
-cp .env .env
 python manage.py migrate
-python manage.py createsuperuser
-python manage.py seed_demo
 python manage.py runserver
-```
 
-## Core endpoints
-- POST `/api/auth/register/`
-- POST `/api/auth/verify-email/`
-- POST `/api/auth/resend-code/`
-- POST `/api/auth/token/` (JWT)  (blocked if email not verified)
-- POST `/api/auth/token/refresh/`
-- POST `/api/auth/recovery/verify/`
-- POST `/api/auth/password-reset/request/`
-- POST `/api/auth/password-reset/confirm/`
+---
 
-- GET `/api/doctors/`
-- GET `/api/doctors/{id}/slots/`
+## DOCKER
 
-- POST `/api/appointments/`
-- GET  `/api/appointments/my/`
-- POST `/api/appointments/{id}/cancel/`
-- POST `/api/appointments/{id}/reschedule/`
+docker compose up --build
+docker compose exec web python manage.py migrate
+docker compose exec web python manage.py seed_demo
 
-Admin:
-- `/api/admin/users/`
-- `/api/admin/doctors/`
-- `/api/admin/slots/`
-- `/api/admin/appointments/`
+---
+
+## SUMMARY
+- Endpoints fully tested with Postman
+- Soft delete + restore implemented without admin
+- JWT authentication secured
+- Clean REST API design
+- Exam-ready project
