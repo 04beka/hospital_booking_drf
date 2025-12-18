@@ -1,7 +1,6 @@
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.conf import settings
-from django.urls import reverse
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -9,21 +8,32 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework.permissions import AllowAny, IsAuthenticated
+
+from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from django.core.mail import send_mail
 
 from .models import EmailVerificationCode
 from .serializers import (
-    RegisterSerializer, VerifyEmailSerializer, ResendCodeSerializer,
-    RecoveryVerifySerializer, PasswordResetRequestSerializer, PasswordResetConfirmSerializer
+    RegisterSerializer,
+    VerifyEmailSerializer,
+    ResendCodeSerializer,
+    RecoveryVerifySerializer,
+    PasswordResetRequestSerializer,
+    PasswordResetConfirmSerializer,
 )
 from .services import (
-    create_or_replace_code, can_resend, send_verification_email,
-    make_recovery_token, verify_recovery_token
+    create_or_replace_code,
+    can_resend,
+    send_verification_email,
+    make_recovery_token,
+    verify_recovery_token,
 )
 
 User = get_user_model()
+
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -36,10 +46,14 @@ class RegisterView(APIView):
         code_obj = create_or_replace_code(user)
         send_verification_email(user, code_obj.code)
 
-        return Response({
-            "message": "Registered. Verification code sent to email.",
-            "email": user.email
-        }, status=status.HTTP_201_CREATED)
+        return Response(
+            {
+                "message": "Registered. Verification code sent to email.",
+                "email": user.email,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class VerifyEmailView(APIView):
     permission_classes = [AllowAny]
@@ -47,6 +61,7 @@ class VerifyEmailView(APIView):
     def post(self, request):
         ser = VerifyEmailSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+
         email = ser.validated_data["email"]
         code = ser.validated_data["code"]
 
@@ -55,21 +70,28 @@ class VerifyEmailView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found"}, status=404)
 
-        code_obj = EmailVerificationCode.objects.filter(
-            user=user, code=code, is_used=False
-        ).order_by("-created_at").first()
+        code_obj = (
+            EmailVerificationCode.objects.filter(
+                user=user, code=code, is_used=False
+            )
+            .order_by("-created_at")
+            .first()
+        )
 
         if not code_obj:
             return Response({"detail": "Invalid code"}, status=400)
+
         if code_obj.is_expired():
             return Response({"detail": "Code expired"}, status=400)
 
         user.is_email_verified = True
         user.save(update_fields=["is_email_verified"])
+
         code_obj.is_used = True
         code_obj.save(update_fields=["is_used"])
 
         return Response({"message": "Email verified"}, status=200)
+
 
 class ResendCodeView(APIView):
     permission_classes = [AllowAny]
@@ -77,6 +99,7 @@ class ResendCodeView(APIView):
     def post(self, request):
         ser = ResendCodeSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+
         email = ser.validated_data["email"]
 
         try:
@@ -89,23 +112,28 @@ class ResendCodeView(APIView):
 
         ok, wait_seconds = can_resend(user)
         if not ok:
-            return Response({"detail": f"Cooldown active. Try again in {wait_seconds}s"}, status=429)
+            return Response(
+                {"detail": f"Cooldown active. Try again in {wait_seconds}s"},
+                status=429,
+            )
 
         code_obj = create_or_replace_code(user)
         send_verification_email(user, code_obj.code)
 
         return Response({"message": "Verification code resent"}, status=200)
 
+
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         data = super().validate(attrs)
-        user = self.user
-        if not user.is_email_verified:
+        if not self.user.is_email_verified:
             raise Exception("Email is not verified")
         return data
 
+
 class LoginView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
 
 class RecoveryVerifyView(APIView):
     permission_classes = [AllowAny]
@@ -113,9 +141,12 @@ class RecoveryVerifyView(APIView):
     def post(self, request):
         ser = RecoveryVerifySerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+
         user = ser.validated_data["user"]
         token = make_recovery_token(user)
+
         return Response({"recovery_token": token}, status=200)
+
 
 class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
@@ -132,21 +163,26 @@ class PasswordResetRequestView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found"}, status=404)
 
-        # Require recovery token (covers the exam requirement)
         try:
             user_id = verify_recovery_token(recovery_token, max_age_seconds=600)
         except Exception:
-            return Response({"detail": "Invalid or expired recovery token"}, status=400)
+            return Response(
+                {"detail": "Invalid or expired recovery token"}, status=400
+            )
+
         if user_id != user.pk:
-            return Response({"detail": "Recovery token does not match user"}, status=400)
+            return Response(
+                {"detail": "Recovery token does not match user"}, status=400
+            )
 
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = PasswordResetTokenGenerator().make_token(user)
 
-        reset_link = f"{settings.FRONTEND_BASE_URL}/api/auth/password-reset/confirm/?uid={uid}&token={token}"
+        reset_link = (
+            f"{settings.FRONTEND_BASE_URL}"
+            f"/api/auth/password-reset/confirm/?uid={uid}&token={token}"
+        )
 
-        # Send email
-        from django.core.mail import send_mail
         send_mail(
             subject="Password reset",
             message=f"Use this link to reset your password: {reset_link}",
@@ -155,8 +191,14 @@ class PasswordResetRequestView(APIView):
             fail_silently=False,
         )
 
-        # For exam/demo convenience, also return link
-        return Response({"message": "Password reset link sent to email.", "reset_link": reset_link}, status=200)
+        return Response(
+            {
+                "message": "Password reset link sent to email.",
+                "reset_link": reset_link,
+            },
+            status=200,
+        )
+
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
@@ -182,3 +224,85 @@ class PasswordResetConfirmView(APIView):
         user.save(update_fields=["password"])
 
         return Response({"message": "Password updated"}, status=200)
+
+
+class MeDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        return Response({"message": "User deactivated"}, status=200)
+
+
+class RestoreRequestView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return Response({"email": ["This field is required."]}, status=400)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found"}, status=404)
+
+        if user.is_active:
+            return Response({"detail": "User is already active"}, status=400)
+
+        ok, wait_seconds = can_resend(user)
+        if not ok:
+            return Response(
+                {"detail": f"Cooldown active. Try again in {wait_seconds}s"},
+                status=429,
+            )
+
+        code_obj = create_or_replace_code(user)
+        send_verification_email(user, code_obj.code)
+
+        return Response(
+            {"message": "Restore code sent to email.", "email": user.email},
+            status=200,
+        )
+
+
+class RestoreConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        code = request.data.get("code")
+
+        if not email:
+            return Response({"email": ["This field is required."]}, status=400)
+        if not code:
+            return Response({"code": ["This field is required."]}, status=400)
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found"}, status=404)
+
+        code_obj = (
+            EmailVerificationCode.objects.filter(
+                user=user, code=code, is_used=False
+            )
+            .order_by("-created_at")
+            .first()
+        )
+
+        if not code_obj:
+            return Response({"detail": "Invalid code"}, status=400)
+
+        if code_obj.is_expired():
+            return Response({"detail": "Code expired"}, status=400)
+
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+
+        code_obj.is_used = True
+        code_obj.save(update_fields=["is_used"])
+
+        return Response({"message": "User restored"}, status=200)
