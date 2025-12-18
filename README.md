@@ -20,6 +20,31 @@ http://localhost:8000/api/
 
 ---
 
+## ENV CONFIGURATION (IMPORTANT)
+
+### .env file
+The `.env` file contains sensitive information (SECRET_KEY, database credentials, email passwords).
+
+For security reasons, **`.env` is NOT included in the repository** and is ignored via `.gitignore`.
+
+### .env.example
+The project includes a `.env.example` file which serves as a template.
+
+To run the project:
+1. Copy `.env.example`
+2. Rename it to `.env`
+3. Fill in your own values
+
+Example (Windows PowerShell):
+copy .env.example .env
+
+Example (Linux/Mac):
+cp .env.example .env
+
+The application will not start without a properly configured `.env` file.
+
+---
+
 ## AUTH FLOW (TESTED)
 
 ### Register
@@ -151,11 +176,12 @@ Rules:
 
 ---
 
-## LOCAL RUN
+## LOCAL RUN (WITHOUT DOCKER)
 
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+copy .env.example .env
 python manage.py migrate
 python manage.py runserver
 
@@ -171,6 +197,8 @@ docker compose exec web python manage.py seed_demo
 
 ## SUMMARY
 - Endpoints fully tested with Postman
+- `.env` is excluded from the repository for security
+- `.env.example` is provided as a configuration template
 - Soft delete + restore implemented without admin
 - JWT authentication secured
 - Clean REST API design
