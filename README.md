@@ -52,10 +52,16 @@ POST /api/auth/register/
 
 {
   "email": "test@mail.com",
-  "password": "Test123!",
-  "first_name": "Beka",
-  "last_name": "Koridze"
+  "password": "Test12345!",
+  "first_name": "Test",
+  "last_name": "User",
+  "recovery_question": "DOG_NAME",
+  "recovery_answer": "dog",
+  "birth_date": "1993-02-04",
+  "gender": "M",
+  "personal_id": "12345678901"
 }
+Note: All fields above are required by RegisterSerializer.
 
 ---
 
