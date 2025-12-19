@@ -69,6 +69,19 @@ POST /api/auth/verify-email/
 
 ---
 
+### Resend verification code (if code is lost or expired)
+POST /api/auth/resend-code/
+
+{
+  "email": "test@mail.com"
+}
+
+Notes:
+- Works only if the email is NOT verified yet
+- Has a cooldown (rate limit) to prevent spam
+
+---
+
 ### Login (JWT)
 POST /api/auth/login/
 
@@ -199,6 +212,7 @@ docker compose exec web python manage.py seed_demo
 - Endpoints fully tested with Postman
 - `.env` is excluded from the repository for security
 - `.env.example` is provided as a configuration template
+- Email verification supports resend functionality
 - Soft delete + restore implemented without admin
 - JWT authentication secured
 - Clean REST API design
